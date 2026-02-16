@@ -1,0 +1,1 @@
+# blindshop-pos
