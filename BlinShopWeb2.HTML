@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlindShop - Professional POS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.2/html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        input, select, button, border, table { border-radius: 0.5rem; }
+        table { border-collapse: separate; border-spacing: 0; width: 100%; overflow: hidden; }
+        th, td { border: 1px solid #e2e8f0; padding: 0.8rem; text-align: left; }
+        thead th { background-color: #047857; color: white; font-weight: 700; border-bottom: 2px solid #065f46; }
+        .tab-button.active { border-bottom: 3px solid #047857; font-weight: bold; color: #047857; }
+        #login-section { background: linear-gradient(135deg, #06b6d4 0%, #047857 100%); }
+        .hidden { display: none !important; }
+        .status-busy { color: #dc2626; font-weight: 900; animation: pulse 2s infinite; }
+        .status-free { color: #16a34a; font-weight: 900; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        .form-label { display: block; font-size: 0.875rem; font-weight: 700; color: #334155; margin-bottom: 0.25rem; }
+        .form-input { border: 1px solid #cbd5e1; padding: 0.6rem; width: 100%; font-weight: 400; background: #fcfcfc; }
+        .summary-card { background: #f1f5f9; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid #e2e8f0; }
+        .card-container { background: white; padding: 1.5rem; border-radius: 0.5rem; border: 1.5px solid #047857; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .sync-online { color: #16a34a; }
+        .sync-offline { color: #dc2626; }
+        @media print { .no-print { display: none !important; } }
+    </style>
+</head>
+<body class="bg-gray-50 text-black font-medium">
+
+    <!-- Login Section -->
+    <div id="login-section" class="flex flex-col items-center justify-center min-h-screen p-4">
+        <h1 class="text-4xl text-white mb-6 font-black tracking-tighter">BlindShop ONLINE</h1>
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm text-center">
+            <div class="mb-4 text-xs text-gray-500">
+                <span id="firebase-status" class="sync-offline">🔴 Initializing...</span>
+            </div>
+            <input type="password" id="password" class="border w-full py-3 px-3 mb-4 text-center text-2xl tracking-widest rounded-lg" placeholder="••••••">
+            <button onclick="checkLogin()" class="bg-green-700 text-white font-bold py-3 w-full rounded-lg hover:bg-green-800 transition shadow-lg">Enter Dashboard</button>
+        </div>
+    </div>
+
+    <!-- App Section -->
+    <div id="app" class="hidden p-4 md:p-8 space-y-6">
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 rounded-lg shadow-sm border gap-4">
+            <div>
+                <h1 class="text-3xl text-green-700 font-black">BlindShop</h1>
+                <div class="flex items-center gap-2 mt-2 flex-wrap">
+                    <p class="text-xs text-gray-500 uppercase">User: <span id="uid-display" class="text-blue-600 font-bold">---</span></p>
+                    <div id="sync-indicator" class="flex items-center gap-1">
+                        <span class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
+                        <span class="text-xs">Syncing...</span>
+                    </div>
+                </div>
+            </div>
+            <button onclick="logoutApp()" class="bg-red-500 text-white px-4 py-2 rounded text-sm font-bold shadow-md hover:bg-red-600">Logout</button>
+        </header>
+
+        <nav id="nav-tabs" class="flex border-b border-gray-200 mb-6 bg-white rounded-t-lg overflow-x-auto">
+            <button class="px-6 py-3 tab-button active" onclick="switchTab('sales')">Sales Panel</button>
+            <button class="px-6 py-3 tab-button admin-only" onclick="switchTab('staff')">Staff Management</button>
+            <button class="px-6 py-3 tab-button admin-only" onclick="switchTab('business')">Business Summary</button>
+        </nav>
+
+        <!-- Sales Tab -->
+        <div id="sales-tab" class="tab-content space-y-6">
+            <div class="card-container">
+                <h2 class="text-green-700 text-xl mb-4 font-black">Daily Entry</h2>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div><label class="form-label">No:</label><input type="text" id="entry-no" class="form-input bg-gray-100" readonly></div>
+                    <div><label class="form-label">Date:</label><input type="date" id="entry-date" class="form-input"></div>
+                    <div><label class="form-label">Staff Name:</label><select id="entry-staff" class="form-input font-bold"></select></div>
+                    <div><label class="form-label">Package:</label><select id="entry-package" onchange="updateCommissionField()" class="form-input"></select></div>
+                    <div><label class="form-label">Time In:</label><input type="time" id="entry-time-in" class="form-input"></div>
+                    <div><label class="form-label">Time Out:</label><input type="time" id="entry-time-out" class="form-input"></div>
+                    <div><label class="form-label">Commission:</label><input type="text" id="entry-comm" class="form-input bg-gray-100" placeholder="RM 0.00" readonly></div>
+                    <div><label class="form-label">Payment:</label><select id="entry-payment" class="form-input"><option value="Cash">Cash</option><option value="Online">Online</option></select></div>
+                    <div><label class="form-label">Customer:</label><select id="entry-cust-type" class="form-input"><option value="New">New</option><option value="Regular">Regular</option></select></div>
+                    <div><label class="form-label">Gender:</label><select id="entry-gender" class="form-input"><option value="Male">Male</option><option value="Female">Female</option></select></div>
+                    <div class="flex items-center pt-8"><label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="entry-booking" class="w-5 h-5"><span class="font-bold text-slate-700">Booking</span></label></div>
+                </div>
+                <div class="mt-6 flex justify-center gap-4 flex-wrap">
+                    <button onclick="addEntry()" class="bg-green-700 text-white px-10 py-3 rounded-lg font-black text-lg hover:bg-green-800 shadow-md">Add Daily Entry</button>
+                    <button onclick="window.print()" class="p-3 border rounded-lg hover:bg-gray-50">🖨️ Print</button>
+                    <button onclick="downloadBackup()" class="p-3 border rounded-lg hover:bg-gray-50">📥 Backup</button>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+                    <h2 class="text-green-700 text-lg font-black uppercase">Operating Day Sales Summary</h2>
+                    <div class="flex gap-2"><button onclick="generatePDF('sales-tab', 'Daily_Summary.pdf')" class="text-gray-400 hover:text-gray-600">🖨️</button><button onclick="downloadBackup()" class="text-gray-400 hover:text-gray-600">📄</button></div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+                    <div><label class="form-label">Filter by Staff:</label><select id="summary-filter" onchange="render()" class="form-input"><option value="All Staff">All Staff</option></select></div>
+                    <div class="summary-card"><span class="form-label">Total Cash:</span><div id="stat-cash" class="text-lg font-black">RM 0.00</div></div>
+                    <div class="summary-card"><span class="form-label">Total Online:</span><div id="stat-online" class="text-lg font-black">RM 0.00</div></div>
+                    <div class="summary-card"><span class="form-label">Total Sales:</span><div id="stat-sales" class="text-lg font-black">RM 0.00</div></div>
+                    <div class="summary-card"><span class="form-label">Total Commission:</span><div id="stat-comm" class="text-lg font-black text-blue-700">RM 0.00</div></div>
+                </div>
+
+                <div class="overflow-x-auto border rounded-lg">
+                    <table class="w-full text-sm">
+                        <thead><tr><th>No</th><th>Staff</th><th>Pkg</th><th>Time In</th><th>Time Out</th><th>Pay</th><th>Remaining</th><th class="no-print">Action</th></tr></thead>
+                        <tbody id="sales-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Staff Management Tab -->
+        <div id="staff-tab" class="tab-content hidden space-y-6">
+            <!-- Commission Summary -->
+            <div class="card-container">
+                <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+                    <h2 class="text-green-700 text-xl font-black">Commission Summary</h2>
+                    <div class="flex gap-2"><button onclick="window.print()" class="text-gray-400 hover:text-gray-600">🖨️</button><button onclick="downloadBackup()" class="text-gray-400 hover:text-gray-600">📄</button></div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="form-label">Filter by Staff:</label>
+                        <select id="comm-staff-filter" class="form-input" onchange="calculateCommissionSummary()"></select>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="form-label">Filter by Date Range:</label>
+                        <div class="flex gap-2">
+                            <input type="date" id="comm-start" class="form-input flex-1" onchange="calculateCommissionSummary()">
+                            <input type="date" id="comm-end" class="form-input flex-1" onchange="calculateCommissionSummary()">
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 flex flex-col items-center">
+                    <div class="w-full">
+                        <label class="form-label">Total Commission:</label>
+                        <div id="comm-total-display" class="bg-gray-100 p-3 rounded font-black text-xl border">RM 0.00</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Staff Advance Management -->
+            <div class="card-container" style="border-color: #1d4ed8;">
+                <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+                    <h2 class="text-blue-700 text-xl font-black">Staff Advance Management</h2>
+                    <div class="flex gap-2"><button onclick="window.print()" class="text-gray-400 hover:text-gray-600">🖨️</button><button onclick="downloadBackup()" class="text-gray-400 hover:text-gray-600">📄</button></div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div><label class="form-label">Date:</label><input type="date" id="adv-date" class="form-input"></div>
+                    <div><label class="form-label">Staff Name:</label><select id="adv-staff" class="form-input"></select></div>
+                    <div><label class="form-label">Advance (RM):</label><input type="number" id="adv-amount" class="form-input" placeholder="e.g., 1000" min="0"></div>
+                </div>
+                <div class="flex justify-center mb-6">
+                    <button onclick="addAdvance()" class="bg-blue-600 text-white px-8 py-2 rounded-lg font-bold hover:bg-blue-700">Add Advance</button>
+                </div>
+                <div class="overflow-x-auto border rounded-lg">
+                    <table class="w-full text-sm">
+                        <thead style="background-color: #047857;">
+                            <tr><th>Date</th><th>Staff</th><th>Advance</th><th>Deducted</th><th>Balance</th><th>Status</th><th class="no-print">Actions</th></tr>
+                        </thead>
+                        <tbody id="advance-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Staff Registry -->
+            <div class="card-container">
+                <h2 class="text-green-700 text-xl mb-4 font-black">Staff Registry</h2>
+                <div class="flex gap-2 mb-6 flex-wrap">
+                    <input type="text" id="staff-name-input" class="form-input flex-1 min-w-48" placeholder="Enter staff name">
+                    <button onclick="addStaff()" class="bg-green-700 text-white px-6 py-2 rounded font-bold hover:bg-green-800">Add Staff</button>
+                </div>
+                <div id="staff-list-ui" class="flex flex-wrap gap-2"></div>
+            </div>
+        </div>
+
+        <!-- Business Summary Tab -->
+        <div id="business-tab" class="tab-content hidden space-y-6">
+            <div class="card-container">
+                <div class="flex justify-between items-center mb-6 flex-wrap gap-2">
+                    <h2 class="text-green-700 text-xl font-black">Business Summary</h2>
+                    <div class="flex gap-2"><button onclick="window.print()" class="text-gray-400 hover:text-gray-600">🖨️</button><button onclick="downloadBackup()" class="text-gray-400 hover:text-gray-600">📄</button></div>
+                </div>
+                <div class="space-y-4 mb-8">
+                    <label class="form-label">Filter Date Range:</label>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input type="date" id="range-start" class="form-input">
+                        <input type="date" id="range-end" class="form-input">
+                    </div>
+                    <div class="flex justify-center pt-4">
+                        <button onclick="updateBusinessAnalytics()" class="bg-green-700 text-white px-8 py-2 rounded-lg font-black hover:bg-green-800">Generate Summary</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                    <div class="summary-card"><span class="form-label">Total New:</span><div id="an-new" class="text-lg font-black bg-gray-100 p-2 rounded">0</div></div>
+                    <div class="summary-card"><span class="form-label">Total Regular:</span><div id="an-reg" class="text-lg font-black bg-gray-100 p-2 rounded">0</div></div>
+                    <div class="summary-card"><span class="form-label">Total Male:</span><div id="an-male" class="text-lg font-black bg-gray-100 p-2 rounded">0</div></div>
+                    <div class="summary-card"><span class="form-label">Total Female:</span><div id="an-female" class="text-lg font-black bg-gray-100 p-2 rounded">0</div></div>
+                    <div class="summary-card"><span class="form-label">Total Bookings:</span><div id="an-book" class="text-lg font-black bg-gray-100 p-2 rounded">0</div></div>
+                    <div class="summary-card"><span class="form-label">Highest Package:</span><div id="an-hi-pkg" class="text-lg font-black bg-gray-100 p-2 rounded">-</div></div>
+                    <div class="summary-card"><span class="form-label">Highest Perf. Staff:</span><div id="an-hi-staff" class="text-lg font-black bg-gray-100 p-2 rounded">-</div></div>
+                    <div class="summary-card"><span class="form-label">Highest Hour Staff:</span><div id="an-hi-hour" class="text-lg font-black bg-gray-100 p-2 rounded">-</div></div>
+                </div>
+                <h3 class="text-green-700 font-black mb-4">Daily Sales Graph</h3>
+                <div class="h-64"><canvas id="salesChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        // =============== CONFIGURATION ===============
+        const ADMIN_PW = "320408";
+        const STAFF_PW = "505050";
+        const PKGS = {
+            'A':{s:50,c:27,d:60}, 'B':{s:70,c:35,d:60}, 'C':{s:75,c:41,d:90}, 
+            'D':{s:100,c:53,d:90}, 'E':{s:120,c:62,d:120}, 'F':{s:130,c:70,d:120}
+        };
+
+        // =============== FIREBASE SETUP ===============
+        // **IMPORTANT: Replace this with your Firebase config from Firebase Console**
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY_HERE",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        let app, auth, db_fs;
+        let db = { staff: [], entries: [], advances: [] };
+        let salesChart = null;
+        let currentUser = null;
+        let userRole = null;
+        let syncListener = null;
+
+        // =============== INITIALIZATION ===============
+        async function init() {
+            try {
+                // Initialize Firebase
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db_fs = getFirestore(app);
+
+                // Update Firebase status
+                updateFirebaseStatus(true);
+
+                // Sign in anonymously
+                await signInAnonymously(auth);
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        currentUser = user;
+                        document.getElementById('uid-display').innerText = user.uid.substring(0, 12) + '...';
+                        startRealTimeSync(user.uid);
+                    }
+                });
+
+                // Set today's date
+                const today = new Date().toISOString().split('T')[0];
+                ['entry-date', 'range-start', 'range-end', 'comm-start', 'comm-end', 'adv-date'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = today;
+                });
+                document.getElementById('entry-time-in').value = new Date().toTimeString().slice(0, 5);
+
+                // Auto-refresh every 30 seconds
+                setInterval(() => {
+                    if (currentUser && !document.getElementById('login-section').classList.contains('hidden')) {
+                        render();
+                    }
+                }, 30000);
+
+            } catch (err) {
+                console.error("Firebase initialization error:", err);
+                updateFirebaseStatus(false);
+                alert("Firebase connection failed. Check console.");
+            }
+        }
+
+        function updateFirebaseStatus(isOnline) {
+            const status = document.getElementById('firebase-status');
+            if (status) {
+                if (isOnline) {
+                    status.innerHTML = '🟢 Online';
+                    status.className = 'sync-online';
+                } else {
+                    status.innerHTML = '🔴 Offline';
+                    status.className = 'sync-offline';
+                }
+            }
+        }
+
+        function startRealTimeSync(uid) {
+            try {
+                if (syncListener) syncListener();
+
+                const docRef = doc(db_fs, 'blindshop_users', uid, 'data', 'main');
+                
+                syncListener = onSnapshot(docRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        db = { ...docSnap.data() };
+                        if (!db.staff) db.staff = [];
+                        if (!db.entries) db.entries = [];
+                        if (!db.advances) db.advances = [];
+                    } else {
+                        // Initialize if doc doesn't exist
+                        setDoc(docRef, db, { merge: true });
+                    }
+                    updateSyncIndicator(true);
+                    render();
+                }, (err) => {
+                    console.error("Sync error:", err);
+                    updateSyncIndicator(false);
+                });
+            } catch (err) {
+                console.error("Real-time sync setup error:", err);
+                updateSyncIndicator(false);
+            }
+        }
+
+        function updateSyncIndicator(synced) {
+            const indicator = document.getElementById('sync-indicator');
+            if (indicator) {
+                if (synced) {
+                    indicator.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500"></span><span class="text-xs">Synced</span>';
+                } else {
+                    indicator.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span><span class="text-xs">Syncing...</span>';
+                }
+            }
+        }
+
+        async function pushToCloud() {
+            if (!currentUser) {
+                console.warn("No user logged in");
+                return;
+            }
+            try {
+                const docRef = doc(db_fs, 'blindshop_users', currentUser.uid, 'data', 'main');
+                await setDoc(docRef, db, { merge: true });
+                updateSyncIndicator(true);
+            } catch (err) {
+                console.error("Push to cloud error:", err);
+                updateSyncIndicator(false);
+            }
+        }
+
+        // =============== AUTHENTICATION ===============
+        window.checkLogin = function() {
+            const pw = document.getElementById('password').value;
+            if (pw === ADMIN_PW) login('Admin');
+            else if (pw === STAFF_PW) login('Staff');
+            else alert("Invalid Credentials");
+        }
+
+        function login(role) {
+            userRole = role;
+            document.getElementById('login-section').classList.add('hidden');
+            document.getElementById('app').classList.remove('hidden');
+            if (role === 'Staff') {
+                document.querySelectorAll('.admin-only').forEach(el => el.classList.add('hidden'));
+            }
+            render();
+        }
+
+        window.logoutApp = function() {
+            userRole = null;
+            if (syncListener) syncListener();
+            document.getElementById('app').classList.add('hidden');
+            document.getElementById('login-section').classList.remove('hidden');
+            document.getElementById('password').value = '';
+        }
+
+        // =============== STAFF MANAGEMENT ===============
+        window.addStaff = function() {
+            const name = document.getElementById('staff-name-input').value.trim();
+            if (!name) return alert("Enter staff name");
+            if (db.staff.some(s => s.name.toLowerCase() === name.toLowerCase())) {
+                return alert("Staff already exists");
+            }
+            db.staff.push({ name, id: Date.now() });
+            document.getElementById('staff-name-input').value = "";
+            pushToCloud();
+        }
+
+        window.deleteStaff = function(id) {
+            if (confirm('Delete staff member?')) {
+                db.staff = db.staff.filter(s => s.id !== id);
+                pushToCloud();
+            }
+        }
+
+        // =============== DAILY ENTRY ===============
+        window.updateCommissionField = function() {
+            const pkg = document.getElementById('entry-package').value;
+            if (pkg && PKGS[pkg]) {
+                document.getElementById('entry-comm').value = `RM ${PKGS[pkg].c.toFixed(2)}`;
+                const timeIn = document.getElementById('entry-time-in').value;
+                if (timeIn) {
+                    const [h, m] = timeIn.split(':').map(Number);
+                    const d = new Date();
+                    d.setHours(h, m + PKGS[pkg].d);
+                    const outTime = d.toTimeString().slice(0, 5);
+                    document.getElementById('entry-time-out').value = outTime;
+                }
+            }
+        }
+
+        window.addEntry = function() {
+            const staff = document.getElementById('entry-staff').value;
+            const pkgKey = document.getElementById('entry-package').value;
+            const date = document.getElementById('entry-date').value;
+            const timeIn = document.getElementById('entry-time-in').value;
+            const timeOut = document.getElementById('entry-time-out').value;
+
+            if (!staff || !pkgKey || !date || !timeIn || !timeOut) {
+                return alert("Fill all required fields");
+            }
+
+            const entry = {
+                id: Date.now(),
+                date,
+                staff,
+                package: pkgKey,
+                timeIn,
+                timeOut,
+                payment: document.getElementById('entry-payment').value,
+                custType: document.getElementById('entry-cust-type').value,
+                gender: document.getElementById('entry-gender').value,
+                isBooking: document.getElementById('entry-booking').checked,
+                sales: PKGS[pkgKey].s,
+                comm: PKGS[pkgKey].c,
+                duration: PKGS[pkgKey].d
+            };
+
+            db.entries.push(entry);
+            
+            // Reset form
+            document.getElementById('entry-booking').checked = false;
+            document.getElementById('entry-payment').value = 'Cash';
+            document.getElementById('entry-cust-type').value = 'New';
+            document.getElementById('entry-gender').value = 'Male';
+
+            pushToCloud();
+            alert("Entry added successfully!");
+        }
+
+        window.deleteEntry = function(id) {
+            if (confirm('Delete this entry?')) {
+                db.entries = db.entries.filter(e => e.id !== id);
+                pushToCloud();
+            }
+        }
+
+        // =============== ADVANCE MANAGEMENT ===============
+        window.addAdvance = function() {
+            const staff = document.getElementById('adv-staff').value;
+            const amount = parseFloat(document.getElementById('adv-amount').value);
+            const date = document.getElementById('adv-date').value;
+
+            if (!staff || isNaN(amount) || amount <= 0 || !date) {
+                return alert("Fill all fields correctly with valid amount");
+            }
+
+            if (!db.advances) db.advances = [];
+            db.advances.push({
+                id: Date.now(),
+                date,
+                staff,
+                amount,
+                deducted: 0
+            });
+
+            document.getElementById('adv-amount').value = "";
+            pushToCloud();
+            alert("Advance added!");
+        }
+
+        window.deductAdvance = function(id) {
+            const input = document.getElementById(`deduct-input-${id}`);
+            if (!input) return;
+            const amt = parseFloat(input.value);
+            
+            if (isNaN(amt) || amt <= 0) {
+                return alert("Enter valid amount");
+            }
+
+            const adv = db.advances.find(a => a.id === id);
+            if (!adv) return;
+
+            const maxDeductible = adv.amount - adv.deducted;
+            if (amt > maxDeductible) {
+                return alert(`Cannot deduct more than RM ${maxDeductible.toFixed(2)}`);
+            }
+
+            adv.deducted = parseFloat((adv.deducted + amt).toFixed(2));
+            input.value = "";
+            pushToCloud();
+        }
+
+        window.deleteAdvance = function(id) {
+            if (confirm('Delete advance record?')) {
+                db.advances = db.advances.filter(a => a.id !== id);
+                pushToCloud();
+            }
+        }
+
+        // =============== COMMISSION SUMMARY ===============
+        window.calculateCommissionSummary = function() {
+            const staff = document.getElementById('comm-staff-filter').value;
+            const start = document.getElementById('comm-start').value;
+            const end = document.getElementById('comm-end').value;
+
+            if (!start || !end) return;
+
+            const filtered = (db.entries || []).filter(e => {
+                const dateMatch = e.date >= start && e.date <= end;
+                const staffMatch = staff === 'All Therapists' || e.staff === staff;
+                return dateMatch && staffMatch;
+            });
+
+            const total = filtered.reduce((sum, e) => sum + (e.comm || 0), 0);
+            document.getElementById('comm-total-display').innerText = `RM ${total.toFixed(2)}`;
+        }
+
+        // =============== RENDERING ===============
+        function render() {
+            renderSalesTab();
+            renderStaffTab();
+            renderBusinessTab();
+        }
+
+        function renderSalesTab() {
+            const filterVal = document.getElementById('summary-filter')?.value || 'All Staff';
+            const today = new Date().toISOString().split('T')[0];
+            const todayEntries = (db.entries || []).filter(e => e.date === today);
+            const filteredEntries = todayEntries.filter(e => 
+                filterVal === 'All Staff' || e.staff === filterVal
+            );
+
+            // Render sales table
+            document.getElementById('sales-table-body').innerHTML = filteredEntries.map((e, i) => {
+                const now = new Date();
+                const [h, m] = e.timeOut.split(':').map(Number);
+                const outDate = new Date();
+                outDate.setHours(h, m, 0);
+                const diff = Math.ceil((outDate - now) / 60000);
+
+                return `<tr>
+                    <td>${i+1}</td>
+                    <td><div class="font-bold">${e.staff}</div><div class="text-[10px] text-gray-400">${e.custType} | ${e.gender}</div></td>
+                    <td>${e.package}</td>
+                    <td>${e.timeIn}</td>
+                    <td>${e.timeOut}</td>
+                    <td><span class="px-2 py-0.5 rounded text-[10px] ${e.payment==='Cash'?'bg-blue-100 text-blue-700':'bg-purple-100 text-purple-700'}">${e.payment}</span></td>
+                    <td class="${diff>0?'status-busy':'status-free'}">${diff>0 ? diff+'m' : 'FREE'}</td>
+                    <td class="no-print"><button onclick="deleteEntry(${e.id})" class="text-red-400 hover:text-red-600 font-bold">×</button></td>
+                </tr>`;
+            }).reverse().join('');
+
+            // Calculate summaries
+            const cash = filteredEntries.filter(e => e.payment === 'Cash').reduce((a, b) => a + (b.sales || 0), 0);
+            const online = filteredEntries.filter(e => e.payment === 'Online').reduce((a, b) => a + (b.sales || 0), 0);
+            const totalComm = filteredEntries.reduce((a, b) => a + (b.comm || 0), 0);
+
+            document.getElementById('stat-cash').innerText = `RM ${cash.toFixed(2)}`;
+            document.getElementById('stat-online').innerText = `RM ${online.toFixed(2)}`;
+            document.getElementById('stat-sales').innerText = `RM ${(cash + online).toFixed(2)}`;
+            document.getElementById('stat-comm').innerText = `RM ${totalComm.toFixed(2)}`;
+
+            // Update staff entries
+            const entryNo = todayEntries.length + 1;
+            document.getElementById('entry-no').value = entryNo;
+        }
+
+        function renderStaffTab() {
+            const staffList = db.staff || [];
+            const staffOpts = staffList.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+
+            document.getElementById('entry-staff').innerHTML = `<option value="">Select Therapist</option>` + staffOpts;
+            document.getElementById('summary-filter').innerHTML = `<option value="All Staff">All Staff</option>` + staffOpts;
+            document.getElementById('comm-staff-filter').innerHTML = `<option value="All Therapists">All Therapists</option>` + staffOpts;
+            document.getElementById('adv-staff').innerHTML = `<option value="">Select Therapist</option>` + staffOpts;
+            document.getElementById('entry-package').innerHTML = `<option value="">Select Package</option>` + 
+                Object.keys(PKGS).map(k => `<option value="${k}">Package ${k} - RM${PKGS[k].s}</option>`).join('');
+
+            // Render staff list
+            document.getElementById('staff-list-ui').innerHTML = staffList.map((s, i) => `
+                <div class="bg-white border p-3 rounded-lg shadow-sm flex justify-between items-center min-w-40">
+                    <span class="font-bold">${s.name}</span>
+                    <button onclick="deleteStaff(${s.id})" class="text-red-500 hover:text-red-700 font-bold">×</button>
+                </div>`).join('');
+
+            // Render advance table
+            document.getElementById('advance-table-body').innerHTML = (db.advances || []).map(a => {
+                const balance = a.amount - a.deducted;
+                const status = balance <= 0 ? '<span class="text-green-600 font-bold">✓ Paid</span>' : '<span class="text-orange-600 font-bold">⏳ Pending</span>';
+                return `<tr>
+                    <td>${a.date}</td>
+                    <td class="font-bold">${a.staff}</td>
+                    <td>RM ${a.amount.toFixed(2)}</td>
+                    <td>RM ${a.deducted.toFixed(2)}</td>
+                    <td class="font-bold ${balance <= 0 ? 'text-green-600' : 'text-red-600'}">RM ${balance.toFixed(2)}</td>
+                    <td>${status}</td>
+                    <td class="no-print">
+                        <div class="flex gap-1 flex-wrap">
+                            <input type="number" id="deduct-input-${a.id}" class="w-16 border rounded text-xs p-1" placeholder="Amt" min="0">
+                            <button onclick="deductAdvance(${a.id})" class="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700">Deduct</button>
+                            <button onclick="deleteAdvance(${a.id})" class="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600">Del</button>
+                        </div>
+                    </td>
+                </tr>`;
+            }).reverse().join('');
+
+            // Update commission summary
+            calculateCommissionSummary();
+        }
+
+        function renderBusinessTab() {
+            updateBusinessAnalytics();
+        }
+
+        window.updateBusinessAnalytics = function() {
+            const start = document.getElementById('range-start')?.value;
+            const end = document.getElementById('range-end')?.value;
+
+            if (!start || !end) return;
+
+            const entries = (db.entries || []).filter(e => e.date >= start && e.date <= end);
+
+            document.getElementById('an-new').innerText = entries.filter(e => e.custType === 'New').length;
+            document.getElementById('an-reg').innerText = entries.filter(e => e.custType === 'Regular').length;
+            document.getElementById('an-male').innerText = entries.filter(e => e.gender === 'Male').length;
+            document.getElementById('an-female').innerText = entries.filter(e => e.gender === 'Female').length;
+            document.getElementById('an-book').innerText = entries.filter(e => e.isBooking).length;
+
+            const pkgs = {};
+            entries.forEach(e => {
+                pkgs[e.package] = (pkgs[e.package] || 0) + 1;
+            });
+            const topPkg = Object.keys(pkgs).reduce((a, b) => pkgs[a] > pkgs[b] ? a : b, '-');
+            document.getElementById('an-hi-pkg').innerText = topPkg;
+
+            const staffSales = {};
+            const staffHours = {};
+            entries.forEach(e => {
+                staffSales[e.staff] = (staffSales[e.staff] || 0) + (e.sales || 0);
+                staffHours[e.staff] = (staffHours[e.staff] || 0) + (e.duration || 0);
+            });
+
+            const topStaff = Object.keys(staffSales).reduce((a, b) => staffSales[a] > staffSales[b] ? a : b, '-');
+            const topHourStaff = Object.keys(staffHours).reduce((a, b) => staffHours[a] > staffHours[b] ? a : b, '-');
+
+            document.getElementById('an-hi-staff').innerText = topStaff;
+            document.getElementById('an-hi-hour').innerText = topHourStaff;
+
+            updateChart(entries);
+        }
+
+        function updateChart(data) {
+            const ctx = document.getElementById('salesChart');
+            if (!ctx) return;
+
+            const salesByDate = {};
+            data.forEach(e => {
+                salesByDate[e.date] = (salesByDate[e.date] || 0) + (e.sales || 0);
+            });
+
+            const labels = Object.keys(salesByDate).sort();
+            const values = labels.map(l => salesByDate[l]);
+
+            if (salesChart) {
+                salesChart.destroy();
+            }
+
+            salesChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Daily Sales (RM)',
+                        data: values,
+                        backgroundColor: '#047857',
+                        borderColor: '#065f46',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        // =============== TAB SWITCHING ===============
+        window.switchTab = function(id) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
+            document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+            
+            const tabElement = document.getElementById(id + '-tab');
+            if (tabElement) {
+                tabElement.classList.remove('hidden');
+            }
+
+            event.currentTarget.classList.add('active');
+        }
+
+        // =============== EXPORT FUNCTIONS ===============
+        window.generatePDF = function(id, name) {
+            const element = document.getElementById(id);
+            if (element) {
+                html2pdf().from(element).save(name);
+            }
+        }
+
+        window.downloadBackup = function() {
+            const blob = new Blob([JSON.stringify(db, null, 2)], {type: "application/json"});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `blindshop_backup_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+        }
+
+        // Initialize app
+        init();
+    </script>
+</body>
+</html>
